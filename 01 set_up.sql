@@ -23,8 +23,8 @@ SHOW  STORAGE INTEGRATIONS;
 DESC INTEGRATION SAP_INTEGRATION;
 SELECT SYSTEM$VALIDATE_STORAGE_INTEGRATION ('SAP_INTEGRATION', 's3://sap-s3-raw/', 'validate_all.txt', 'all');
 CREATE or REPLACE DATABASE SAP_RAW_AWS COMMENT = 'For S4 raw data';
-USE DATABASE SAP_RAW_AWS;
-CREATE OR REPLACE SCHEMA SAP_RAW_AWS.FI;
+USE DATABASE SAP_RAW_AWS; --change to SAP_LLM_ANALYST2
+CREATE OR REPLACE SCHEMA SAP_RAW_AWS.FI; --change to SAP_RAW
 USE SCHEMA SAP_RAW_AWS.FI;
 --Create file format
 CREATE OR REPLACE FILE FORMAT SAP_FILE TYPE = parquet COMMENT = 'Parquet file format for AWS Glue files landed in S3';
@@ -37,50 +37,63 @@ CREATE OR REPLACE STAGE SAP_STAGE
   --Test integration
   --run the job from AWS glue to get files to work with
  SHOW stages;
- LIST @SAP_STAGE/Z_BW_ODATA_0FI_AR_4_1_SRV/; --copy one of the file names from the result.
-LIST @SAP_STAGE/CUSTOMER/;
-SELECT t.$1 from @sap_stage/Z_BW_ODATA_0FI_AR_4_1_SRV/run-1748278832687-part-block-0-r-00000-snappy.parquet t; --use this if you have already loaded files. Use the file name you copied from the previous command.
-SELECT t.$1 from @sap_stage/CUSTOMER/run-1749633590332-part-block-0-r-00000-snappy.parquet t;
+LIST @SAP_STAGE/fi_ar_4/; --copy one of the file names from the result.
+LIST @SAP_STAGE/customer;
+LIST @SAP_STAGE/material/;
+
 
 --Create DDLs 
 
-  CREATE OR REPLACE TABLE Z_FI_AR_4
+  CREATE OR REPLACE TABLE FI_AR_4 --change to "0fi_ar_4"
   USING TEMPLATE (
     SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
       FROM TABLE(
         INFER_SCHEMA(
-      LOCATION=>'@sap_stage/Z_BW_ODATA_0FI_AR_4_1_SRV/'
+      LOCATION=>'@sap_stage/fi_ar_4/'
       , FILE_FORMAT=>'SAP_FILE'
         )
       ));
 
 SELECT get_ddl('TABLE', 'Z_FI_AR_4');
 
-
   CREATE OR REPLACE TABLE CUSTOMER
   USING TEMPLATE (
     SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
       FROM TABLE(
         INFER_SCHEMA(
-      LOCATION=>'@sap_stage/CUSTOMER/'
+      LOCATION=>'@sap_stage/customer/'
       , FILE_FORMAT=>'SAP_FILE'
         )
       ));
 
 SELECT get_ddl('TABLE', 'CUSTOMER');
 
+CREATE OR REPLACE TABLE MATERIAL
+  USING TEMPLATE (
+    SELECT ARRAY_AGG(OBJECT_CONSTRUCT(*))
+      FROM TABLE(
+        INFER_SCHEMA(
+      LOCATION=>'@sap_stage/material/'
+      , FILE_FORMAT=>'SAP_FILE'
+        )
+      ));
+
+SELECT get_ddl('TABLE', 'MATERIAL');
+
 
 --!!now delete the files from S3!!
-REMOVE @sap_stage/Z_BW_ODATA_0FI_AR_4_1_SRV/;
-REMOVE @sap_stage/CUSTOMER/;
+REMOVE @sap_stage/fi_ar_4/;
+REMOVE @sap_stage/customer/;
+REMOVE @sap_stage/material/;
 --truncate tables
-TRUNCATE TABLE Z_FI_AR_4;
+TRUNCATE TABLE FI_AR_4;
 TRUNCATE TABLE CUSTOMER;
+TRUNCATE TABLE MATERIAL;
 
-CREATE OR REPLACE PIPE Z_FI_AR_4_PIPE
+CREATE OR REPLACE PIPE FI_AR_4_PIPE
 AUTO_INGEST = TRUE
 AS
- COPY INTO Z_FI_AR_4 from @SAP_STAGE/Z_BW_ODATA_0FI_AR_4_1_SRV/
+ COPY INTO FI_AR_4 from @SAP_STAGE/fi_ar_4/
   FILE_FORMAT = SAP_FILE
   MATCH_BY_COLUMN_NAME='CASE_INSENSITIVE'
   ON_ERROR=CONTINUE; 
@@ -88,31 +101,44 @@ AS
 CREATE OR REPLACE PIPE CUSTOMER_PIPE
 AUTO_INGEST = TRUE
 AS
- COPY INTO CUSTOMER from @SAP_STAGE/CUSTOMER/
+ COPY INTO CUSTOMER from @SAP_STAGE/customer/
+  FILE_FORMAT = SAP_FILE
+  MATCH_BY_COLUMN_NAME='CASE_INSENSITIVE'
+  ON_ERROR=CONTINUE; 
+
+CREATE OR REPLACE PIPE MATERIAL_PIPE
+AUTO_INGEST = TRUE
+AS
+ COPY INTO MATERIAL from @SAP_STAGE/material/
   FILE_FORMAT = SAP_FILE
   MATCH_BY_COLUMN_NAME='CASE_INSENSITIVE'
   ON_ERROR=CONTINUE; 
 
 SHOW pipes; -- get the ARN and configure the SNS for the S3 bucket from the AWS console
 /*arn:aws:sqs:us-west-2:227202484309:sf-snowpipe-AIDATJZSSZBKXUQTZVL4W-j9b6KZYM9aqg3IToJ1ngqQ */
-SELECT SYSTEM$PIPE_STATUS ('Z_FI_AR_4_PIPE');
+SELECT SYSTEM$PIPE_STATUS ('FI_AR_4_PIPE');
 SELECT SYSTEM$PIPE_STATUS ('CUSTOMER_PIPE');
+SELECT SYSTEM$PIPE_STATUS ('MATERIAL_PIPE');
   --ALTER PIPE Z_BW_ODATA_0FI_AR_4_1_SRV_PIPE SET PIPE_EXECUTION_PAUSED = TRUE; --make sure to turn off pipe so you don't pay.
   
   --RUN  THE AWS GLUE JOB NOW!è
   --after its executed, but before the SNS has kicked in  (can take minutes) check that the files have landed in the S3 bucket:
-LIST @SAP_STAGE/Z_BW_ODATA_0FI_AR_4_1_SRV/; --copy one of the file names from the result.
-LIST @SAP_STAGE/CUSTOMER/;
-SELECT * FROM Z_FI_AR_4; --5201 rows
+LIST @SAP_STAGE/fi_ar_4/; --copy one of the file names from the result.
+LIST @SAP_STAGE/customer/;
+LIST @SAP_STAGE/material/;
+SELECT * FROM FI_AR_4; --5201 rows
 SELECT * FROM CUSTOMER; --201
-ALTER PIPE Z_FI_AR_4_PIPE SET PIPE_EXECUTION_PAUSED = TRUE; --make sure to turn off pipe so you don't pay.
-ALTER PIPE CUSTOMER_PIPE SET PIPE_EXECUTION_PAUSED = TRUE; --make sure to turn off pipe so you don't pay.
+SELECT * FROM MATERIAL; 
 
+---TO PAUSE!!!!!!!!
+ALTER PIPE FI_AR_4_PIPE SET PIPE_EXECUTION_PAUSED = TRUE; --make sure to turn off pipe so you don't pay.
+ALTER PIPE CUSTOMER_PIPE SET PIPE_EXECUTION_PAUSED = TRUE; --make sure to turn off pipe so you don't pay.
+ALTER PIPE MATERIAL_PIPE SET PIPE_EXECUTION_PAUSED = TRUE; --make sure to turn off pipe so you don't pay.
 
   /* Clean up -- Deletes database 
 Author: David Richert
 Date: 9 May 2025
 */
 
---DROP DATABASE SAP_RAW_AWS;
+DROP DATABASE SAP_RAW_AWS;
 
