@@ -52,8 +52,27 @@ You also need to obtain the SAP Test and Demo User, starter package (TD_7016852)
 Go to [Snowflake.com](https://www.snowflake.com/en/), select *Start for Free* and follow the steps to create your account. 
 
 ## Prepare (SAP S/4 HANA)
-This demo shows three methods to extract data through the ODP ODATA api:
-* BW extractor
-* View on Table
-* CDS View.
+In SAP GUI, use the following three methods to activate the extraction of data through the ODP ODATA api:
+* [BW extractor for Accounts Receivables](docs/BW_ODATA.md) (0fi_ar_4)
+* [View on Table for Customers](docs/Table_ODATA.md) (kna1)
+* [CDS View for Material](docs/CDS_ODATA.md) (I_Material)
 
+## Extract (AWS Glue)
+
+To use AWS Glue with SAP S/4HANA (S4H)
+1. Create a connector to S4H.
+2. Create an ETL job
+    a. Create a source using SAP ODATA.
+    b. Create a target using S3.
+    c. Run the job.
+    d. Check the files landed in the S3 bucket.
+
+  ##  Create the RAW layer (Snowflake SQL)
+ 1. Open an SQL worksheet in Snowflake.
+ 2. Copy and paste the following [code](docs/setup.sql) into it. 
+ 3. Review the links in the code on creating an integration between Snowflake and AWS S3 to 
+obtain your *STORAGE_AWS_ROLE_ARN* and *STORAGE_AWS_EXTERNAL_ID*.
+4. Run the code, line by line to set up the integrations and environment.
+
+## Create Bronze & Gold layers (Snowflake Notebook)
+Open the [SAP_PREP_GOLD](docs/SAP_PREP_GOLD.ipynb) notebook and execute each cell. You can verify the output of each one.
