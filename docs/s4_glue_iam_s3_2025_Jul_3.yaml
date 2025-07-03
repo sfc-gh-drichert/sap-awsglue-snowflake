@@ -1,0 +1,615 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VpcId
+          - SubnetId
+      - Label:
+          default: "EC2 Configuration"
+        Parameters:
+          - KeyPairOption
+          - ExistingKeyName
+          - InstanceType
+    ParameterLabels:
+      VpcId:
+        default: "Which VPC should this be deployed to?"
+      SubnetId:
+        default: "Which subnet should this be deployed to?"
+      KeyPairOption:
+        default: "Key Pair Option"
+      ExistingKeyName:
+        default: "Existing Key Pair Name"
+      InstanceType:
+        default: "EC2 Instance Type"
+  Generator: 'former2'
+Description: 'SAP S4 HANA with Glue, IAM, and S3 resources'
+
+Parameters:
+  VpcId:
+    Type: 'AWS::EC2::VPC::Id'
+    Description: 'Select a VPC in the current region where the EC2 instance will be launched'
+  
+  SubnetId:
+    Type: 'AWS::EC2::Subnet::Id'
+    Description: 'Select a subnet within the selected VPC - the EC2 instance will be launched in this subnet''s availability zone'
+  
+  InstanceType:
+    Type: String
+    Default: 'r6i.4xlarge'
+    AllowedValues:
+      - 'r6i.4xlarge'
+      - 'r6i.8xlarge'
+      - 'r5.4xlarge'
+      - 'r5.8xlarge'
+      - 'x2iedn.4xlarge'
+    Description: 'EC2 instance type for the SAP S4 HANA server'
+  
+  KeyPairOption:
+    Type: String
+    Default: 'CreateNew'
+    AllowedValues:
+      - 'CreateNew'
+      - 'UseExisting'
+    Description: 'Choose whether to create a new key pair or use an existing one'
+  
+  ExistingKeyName:
+    Type: String
+    Default: ''
+    Description: 'Name of an existing EC2 KeyPair (leave empty if creating new)'
+
+Conditions:
+  CreateNewKeyPair: !Equals [!Ref KeyPairOption, 'CreateNew']
+  UseExistingKeyPair: !Equals [!Ref KeyPairOption, 'UseExisting']
+
+# Map AMI IDs by region to ensure the correct AMI is used in each region
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: 'ami-0a3c3a20c09d6f377'
+    us-east-2:
+      AMI: 'ami-0629230e074c580f2'
+    us-west-1:
+      AMI: 'ami-0b2ca94b5b49e0132'
+    us-west-2:
+      AMI: 'ami-0a66a25dbe23e588b'
+    eu-west-1:
+      AMI: 'ami-0694d931cee176e7d'
+    eu-central-1:
+      AMI: 'ami-0b7fd829e7758b06d'
+    ap-northeast-1:
+      AMI: 'ami-0d52744d6551d851e'
+    ap-southeast-1:
+      AMI: 'ami-0f74c08b8b5effa56'
+    ap-southeast-2:
+      AMI: 'ami-0310483fb2b488153'
+
+Resources:
+  # Create a new key pair if requested
+  NewKeyPair:
+    Type: 'AWS::EC2::KeyPair'
+    Condition: CreateNewKeyPair
+    Properties:
+      KeyName: !Sub '${AWS::StackName}-key-pair'
+
+  # Lambda function to get subnet information
+  SubnetInfoFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: 'index.handler'
+      Role: !GetAtt SubnetInfoLambdaRole.Arn
+      Runtime: 'python3.9'
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          
+          def handler(event, context):
+              try:
+                  if event['RequestType'] == 'Delete':
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                      return
+                  
+                  subnet_id = event['ResourceProperties']['SubnetId']
+                  ec2 = boto3.client('ec2')
+                  response = ec2.describe_subnets(SubnetIds=[subnet_id])
+                  
+                  if not response['Subnets']:
+                      cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason="Subnet not found")
+                      return
+                  
+                  subnet = response['Subnets'][0]
+                  availability_zone = subnet['AvailabilityZone']
+                  vpc_id = subnet['VpcId']
+                  
+                  responseData = {
+                      'AvailabilityZone': availability_zone,
+                      'VpcId': vpc_id
+                  }
+                  
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData)
+              except Exception as e:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, reason=str(e))
+  
+  # IAM role for the Lambda function
+  SubnetInfoLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: EC2DescribeSubnets
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: 'ec2:DescribeSubnets'
+                Resource: '*'
+  
+  # Custom resource to get subnet information
+  SubnetInfo:
+    Type: 'Custom::SubnetInfo'
+    Properties:
+      ServiceToken: !GetAtt SubnetInfoFunction.Arn
+      SubnetId: !Ref SubnetId
+  # Create the IAM group first
+  SapGroup:
+    Type: 'AWS::IAM::Group'
+    Properties:
+      GroupName: !Sub '${AWS::StackName}-sap-group'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'
+      Path: '/'
+
+  IAMUser:
+    Type: 'AWS::IAM::User'
+    DependsOn: SapGroup
+    Properties:
+      Path: '/'
+      UserName: !Sub '${AWS::StackName}-sap-user'
+      Groups: 
+        - !Ref SapGroup
+      Tags: 
+        - 
+          Key: 'Purpose'
+          Value: 'sap-s3-bucket-share'
+      ManagedPolicyArns: 
+        - 'arn:aws:iam::aws:policy/AWSGlueConsoleFullAccess'
+        - 'arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess'
+
+  # Create a security group for the EC2 instance
+  EC2SecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: 'Security group for SAP S4 HANA EC2 instance'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: '0.0.0.0/0'
+          Description: 'Allow SSH access'
+        - IpProtocol: tcp
+          FromPort: 3200
+          ToPort: 3299
+          CidrIp: '0.0.0.0/0'
+          Description: 'Allow SAP access'
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8099
+          CidrIp: '0.0.0.0/0'
+          Description: 'Allow SAP Web Dispatcher access'
+      Tags:
+        - Key: 'Name'
+          Value: !Sub '${AWS::StackName}-sap-sg'
+
+  # Create an IAM Instance Profile for the EC2 instance
+  EC2InstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      InstanceProfileName: !Sub '${AWS::StackName}-InstanceProfile'
+      Path: '/'
+      Roles:
+        - !Ref IAMRole
+
+  EC2Instance:
+    Type: 'AWS::EC2::Instance'
+    DependsOn: [EC2InstanceProfile, SubnetInfo]
+    Properties:
+      ImageId: !FindInMap [RegionMap, !Ref 'AWS::Region', AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !If 
+        - CreateNewKeyPair
+        - !Ref NewKeyPair
+        - !Ref ExistingKeyName
+      # Use the AZ from the subnet info
+      AvailabilityZone: !GetAtt SubnetInfo.AvailabilityZone
+      Tenancy: 'default'
+      SubnetId: !Ref SubnetId
+      EbsOptimized: false
+      SecurityGroupIds: 
+        - !Ref EC2SecurityGroup
+      SourceDestCheck: true
+      BlockDeviceMappings: 
+        - 
+          DeviceName: '/dev/sda1'
+          Ebs: 
+            Encrypted: true
+            VolumeSize: 50
+            SnapshotId: 'snap-009487943bb015ad4'
+            VolumeType: 'gp3'
+            DeleteOnTermination: true
+        - 
+          DeviceName: '/dev/sdb'
+          Ebs: 
+            Encrypted: true
+            VolumeSize: 50
+            SnapshotId: ''
+            VolumeType: 'gp3'
+            DeleteOnTermination: true
+        - 
+          DeviceName: '/dev/sdc'
+          Ebs: 
+            Encrypted: true
+            VolumeSize: 300
+            SnapshotId: ''
+            VolumeType: 'gp3'
+            DeleteOnTermination: true
+        - 
+          DeviceName: '/dev/sdd'
+          Ebs: 
+            Encrypted: true
+            VolumeSize: 512
+            SnapshotId: ''
+            VolumeType: 'st1'
+            DeleteOnTermination: true
+        - 
+          DeviceName: '/dev/sdl'
+          Ebs: 
+            Encrypted: true
+            VolumeSize: 500
+            SnapshotId: ''
+            VolumeType: 'gp3'
+            DeleteOnTermination: true
+        - 
+          DeviceName: '/dev/sdt'
+          Ebs: 
+            Encrypted: true
+            VolumeSize: 128
+            SnapshotId: ''
+            VolumeType: 'gp3'
+            DeleteOnTermination: true
+        - 
+          DeviceName: '/dev/sdw'
+          Ebs: 
+            Encrypted: true
+            VolumeSize: 20
+            SnapshotId: ''
+            VolumeType: 'gp3'
+            DeleteOnTermination: true
+        - 
+          DeviceName: '/dev/sdy'
+          Ebs: 
+            Encrypted: true
+            VolumeSize: 50
+            SnapshotId: ''
+            VolumeType: 'gp3'
+            DeleteOnTermination: true
+        - 
+          DeviceName: '/dev/sdz'
+          Ebs: 
+            Encrypted: true
+            VolumeSize: 500
+            SnapshotId: ''
+            VolumeType: 'gp3'
+            DeleteOnTermination: true
+      UserData: !Base64 |
+        #!/bin/bash 
+        set -Eeuxo pipefail 
+        export MyOS="SLES15SP5HVM"
+        hostname sapci
+        echo sapci.local | tee /etc/hostname /etc/HOSTNAME > /dev/null 
+        export MyStackId="${AWS::StackId}"
+        export SecondaryHostname=""
+        set +x 
+        export IMDS_TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+        export SLESBYOSRegCode=""
+        set -x 
+        export DdbTableName="LaunchWizard_${AWS::StackName}"
+        export HANAHostCount=1
+        export Role="pas,ascs,dbprimary,webdisp"
+        export SLESBYOSRegCode=""
+        export RhelByosSecretArn=""
+        export URLSuffix="amazonaws.com"
+        export InstallSap="No"
+        export InstallSapWebDispatcher="Yes"
+        export SapMediaS3="No"
+        export SapMediaEFS="No"
+        export SapMediaCreateEFS="No"
+        export AppInstallationSpecification="{}"
+        export use_efs_trans="No"
+        export efs_trans_mount_target=None
+        export NodeType=DB
+        HOME_DIR="/root/install"
+        mkdir -p ${HOME_DIR}
+        trap onexit ERR 
+        function onexit() {
+           local _msg="Error on line $(caller)"
+           echo Exiting $0 with $_msg
+           exit 1
+        }
+        
+        source /etc/os-release 
+        ###################
+        # Proxy settings     
+        ###################
+        
+        export no_proxy=localhost,127.0.0.1,169.254.169.254,
+        export NO_PROXY=${no_proxy} 
+        export http_proxy=
+        export HTTP_PROXY=${http_proxy} 
+        export https_proxy=${http_proxy} 
+        export HTTPS_PROXY=${http_proxy} 
+        
+        ##################
+        # patch instance  
+        ##################
+        
+        if [[ ${ID} == "rhel" ]] && [[ No == "Yes" ]]; then 
+            yum update -y || true
+        fi
+        if [[ ${ID} == "sles" ]] && [[ No == "Yes" ]]; then 
+            zypper update -y || true
+        fi
+        ##################
+        # install awscli  
+        ##################
+        
+        UNZIP_INSTALLED=$(which unzip) || true
+        set +Eeuxo pipefail 
+        if [[ ! ${UNZIP_INSTALLED} =~ "unzip" ]]; then
+         if [[ ${ID} == "sles" ]]; then 
+           zypper install -y unzip
+         fi
+         if [[ ${ID} == "rhel" ]] && [[ ${VERSION_ID} =~ ^9 ]]; then 
+           yum install -y unzip
+           yum install -y wget
+           yum install -y sqlite
+         elif [[ ${ID} == "rhel" ]] && [[ ${VERSION_ID} =~ ^8 ]]; then 
+           yum install -y unzip
+           yum install -y wget
+           yum install -y sqlite
+         elif [[ ${ID} == "rhel" ]] && [[ ${VERSION_ID} =~ ^7 ]]; then 
+           rpm -i http://mirror.centos.org/centos/7/os/x86_64/Packages/unzip-6.0-21.el7.x86_64.rpm
+         fi
+        fi
+        curl https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o ${HOME_DIR}/awscliv2.zip
+        unzip ${HOME_DIR}/awscliv2.zip -d  ${HOME_DIR}/awscliv2
+        sudo ${HOME_DIR}/awscliv2/aws/install --update
+        rm -f ${HOME_DIR}/awscliv2.zip
+        sleep 30
+        set -Eeuxo pipefail 
+        
+        ##################
+        # download scripts 
+        ##################
+        
+        set +Eeuxo pipefail 
+        until [[ -f ${HOME_DIR}/scripts.zip ]];do
+           aws s3 cp s3://launchwizard-sap-workload-assets-us-west-2-prod/0dc37e6969a32310f4dc7d041506bb3ea88f8ea7fe8875deb18420746346634db/sap/scripts/scripts.zip ${HOME_DIR}/scripts.zip  || true 
+           sleep 30
+        done
+        until [[ -f ${HOME_DIR}/scripts.zip.sig ]];do
+           aws s3 cp s3://launchwizard-sap-workload-assets-us-west-2-prod/0dc37e6969a32310f4dc7d041506bb3ea88f8ea7fe8875deb18420746346634db/sap/scripts/scripts.zip.sig ${HOME_DIR}/scripts.zip.sig  || true 
+           sleep 30
+        done
+        until [[ -f ${HOME_DIR}/key.pem ]];do
+           aws s3 cp s3://launchwizard-sap-workload-assets-us-west-2-prod/0dc37e6969a32310f4dc7d041506bb3ea88f8ea7fe8875deb18420746346634db/sap/scripts/key.pem ${HOME_DIR}/key.pem  || true 
+           sleep 30
+        done
+        openssl dgst -sha256 -verify ${HOME_DIR}//key.pem -keyform PEM -signature ${HOME_DIR}//scripts.zip.sig ${HOME_DIR}//scripts.zip
+        if [[ $? -eq 0 ]]; then
+           set -Eeuxo pipefail 
+           unzip  ${HOME_DIR}/scripts.zip -d  ${HOME_DIR}/
+           chmod -R 775  ${HOME_DIR}
+           rm -f  ${HOME_DIR}/scripts.zip 
+           mkdir -p /root/install/scripts/log
+        ${HOME_DIR}/scripts/install.sh
+        else
+           echo "scripts.zip is tampered. exiting..."
+           exit 1
+        fi
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      Monitoring: true
+      Tags: 
+        - 
+          Key: 'Name'
+          Value: 'sap s4hana 2023 fps00'
+        - 
+          Key: 'InstanceScheduler-LastAction'
+          Value: 'Stopped By aws-instance-scheduler 2025-06-23 17:05 UTC'
+        - 
+          Key: 'LaunchWizardApplicationType'
+          Value: 'SAP'
+        - 
+          Key: 'Schedule'
+          Value: 'stopped'
+        - 
+          Key: 'SourceTemplate'
+          Value: 'AWSLaunchWizard'
+        - 
+          Key: 'SSMForSAPManaged'
+          Value: 'False'
+        - 
+          Key: 'LaunchWizardResourceGroupID'
+          Value: 'eb83b975-8825-487b-9038-93fc5601b692'
+      HibernationOptions: 
+        Configured: false
+      CpuOptions: 
+        CoreCount: 8
+        ThreadsPerCore: 2
+      EnclaveOptions: 
+        Enabled: false
+
+  GlueJob:
+    Type: 'AWS::Glue::Job'
+    Properties:
+      Name: !Sub '${AWS::StackName}-SAP-Accounts-Receivable'
+      Description: 'ETL job for SAP Accounts Receivable data'
+      Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/service-role/AWSGlueServiceRole'
+      ExecutionProperty: 
+        MaxConcurrentRuns: 1
+      Command: 
+        Name: 'glueetl'
+        ScriptLocation: !Sub 's3://aws-glue-assets-${AWS::AccountId}-${AWS::Region}/scripts/SAP Accounts Receivable.py'
+        PythonVersion: '3'
+      DefaultArguments: 
+        --enable-metrics: 'true'
+        --enable-spark-ui: 'true'
+        --spark-event-logs-path: !Sub 's3://aws-glue-assets-${AWS::AccountId}-${AWS::Region}/sparkHistoryLogs/'
+        --enable-job-insights: 'true'
+        --enable-observability-metrics: 'true'
+        --enable-glue-datacatalog: 'true'
+        --job-bookmark-option: 'job-bookmark-disable'
+        --job-language: 'python'
+        --TempDir: !Sub 's3://aws-glue-assets-${AWS::AccountId}-${AWS::Region}/temporary/'
+      Connections: 
+        Connections: 
+          - '31March1847'
+      MaxRetries: 0
+      Timeout: 480
+      GlueVersion: '5.0'
+      # Removed MaxCapacity: 10 - can't use MaxCapacity with WorkerType and NumberOfWorkers
+      NumberOfWorkers: 10
+      WorkerType: 'G.1X'
+
+  IAMRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      Path: '/service-role/'
+      RoleName: !Sub '${AWS::StackName}-EC2RoleForLaunchWizard'
+      AssumeRolePolicyDocument: |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "ec2.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        }
+      MaxSessionDuration: 3600
+      ManagedPolicyArns: 
+        - 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'
+        - 'arn:aws:iam::aws:policy/AmazonEC2RolePolicyForLaunchWizard'
+      Description: 'Service role create for Launch Wizard to allow access to other AWS services from EC2 instances.'
+
+  # Create the SQS queue first
+  SapSnowpipeQueue:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      QueueName: 'sf-snowpipe-queue'
+      Tags:
+        - Key: 'Purpose'
+          Value: 'SAP S3 notifications'
+
+  # Add policy to allow S3 to publish to the queue
+  SapSnowpipeQueuePolicy:
+    Type: 'AWS::SQS::QueuePolicy'
+    Properties:
+      Queues:
+        - !Ref SapSnowpipeQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 's3.amazonaws.com'
+            Action: 'sqs:SendMessage'
+            Resource: !GetAtt SapSnowpipeQueue.Arn
+            Condition:
+              ArnLike:
+                'aws:SourceArn': !Sub 'arn:aws:s3:::${AWS::StackName}-sap-s3-raw-${AWS::AccountId}-${AWS::Region}'
+
+  S3BucketSaps3raw:
+    Type: 'AWS::S3::Bucket'
+    DependsOn: SapSnowpipeQueuePolicy
+    UpdateReplacePolicy: 'Retain'
+    DeletionPolicy: 'Retain'
+    Properties:
+      NotificationConfiguration:
+        QueueConfigurations:
+          - Event: 's3:ObjectCreated:*'
+            Queue: !GetAtt SapSnowpipeQueue.Arn
+        TopicConfigurations: []
+        LambdaConfigurations: []
+      PublicAccessBlockConfiguration:
+        RestrictPublicBuckets: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        BlockPublicAcls: true
+      BucketName: !Sub '${AWS::StackName}-sap-s3-raw-${AWS::AccountId}-${AWS::Region}'
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: 'BucketOwnerEnforced'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'AES256'
+      Tags:
+        - Value: 's3'
+          Key: 'sap'
+
+Outputs:
+  KeyPairUsed:
+    Description: 'The key pair used for the EC2 instance'
+    Value: !If 
+      - CreateNewKeyPair
+      - !Ref NewKeyPair
+      - !Ref ExistingKeyName
+  
+  EC2InstanceId:
+    Description: 'The ID of the EC2 instance'
+    Value: !Ref EC2Instance
+  
+  EC2InstanceAZ:
+    Description: 'The Availability Zone of the EC2 instance'
+    Value: !GetAtt SubnetInfo.AvailabilityZone
+  
+  EC2InstancePrivateIP:
+    Description: 'The private IP address of the EC2 instance'
+    Value: !GetAtt EC2Instance.PrivateIp
+  
+  S3BucketName:
+    Description: 'The name of the S3 bucket'
+    Value: !Ref S3BucketSaps3raw
+  
+  S3BucketArn:
+    Description: 'The ARN of the S3 bucket'
+    Value: !GetAtt S3BucketSaps3raw.Arn
+  
+  GlueJobName:
+    Description: 'The name of the Glue job'
+    Value: !Ref GlueJob
+  
+  SQSQueueURL:
+    Description: 'The URL of the SQS queue for S3 notifications'
+    Value: !Ref SapSnowpipeQueue
+  
+  DeploymentRegion:
+    Description: 'The AWS region where resources were deployed'
+    Value: !Ref 'AWS::Region'

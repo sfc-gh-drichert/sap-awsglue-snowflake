@@ -1,6 +1,10 @@
 # SAP to Snowflake with AWS Glue
 Use the following templates and code to build a demo environment where you can create dataflows from SAP S/4HANA fully activated appliance to your own Snowflake account. Here is a quick overview of the main actions:
 
+**Use AWS Cloud Formation**
+
+Use the following AWS Cloud formation [template](docs/s4_glue_iam_s3_2025_Jul_3.yaml) in region us-west-2 (Oregon) to deploy the necessary parts on the AWS side (S/4HANA fully activated appliance 2023 SPS00, AWS job, S3). Go to [Snowflake.com](https://snowflake.com) to activate a snowflake account with free credits.
+
 **Prepare (SAP S/4 HANA)**
 
 Prepare data sources (CDS views, tables, BW extractors) for initial and delta consumption by the ODP ODATA API v2. 
@@ -36,7 +40,8 @@ Use a Snowflake notebook (SAP_PREP_GOLD.ipynb) to automatically:
 
 ### SAP S/4HANA Test & Demo Account
 
-There are two options to activate an S/4 HANA demo system, either through:
+There are three options to activate an S/4 HANA demo system, either through:
+* using the following AWS Cloud formation [template](docs/s4_glue_iam_s3_2025_Jul_3.yaml) in region us-west-2 (Oregon) to deploy a stack that includes the S/4HANA instance, the AWS Glue jobs, the IAM roles, and the S3 bucket.
 * [SAP Cloud Application Library](cal.sap.com) (1-2 hours, use for 30 days), or use the
 * AWS Launch wizard ([Create deployment - SAP NetWeaver on SAP HANA system single instance deployment](https://github.com/awslabs/aws-sap-automation/tree/main/s4h_faa) 4-5 hours, use indefinitely). To order the appliance for download, check [SAP Note 2041140](https://me.sap.com/notes/2041140).
 
