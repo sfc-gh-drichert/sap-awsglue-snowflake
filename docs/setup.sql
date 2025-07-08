@@ -28,8 +28,8 @@ CREATE OR REPLACE STORAGE INTEGRATION SAP_INTEGRATION
   TYPE = EXTERNAL_STAGE
   STORAGE_PROVIDER = 'S3'
   ENABLED = TRUE
-  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::631484165566:role/sap_snowflake_s3_access_role' --obfuscate for quickstart
-  STORAGE_AWS_EXTERNAL_ID = 'EU_DEMO47_SFCRole=3571_xQgnqahg8fymSujM2bXWqAWHwOM=' --so you don't have to set it each time your recreate the storage integration.
+  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::YourNumber:role/YourRole' --follow the instructions above to get this
+  STORAGE_AWS_EXTERNAL_ID = 'YourExternalID' --so you don't have to set it each time your recreate the storage integration.
   STORAGE_ALLOWED_LOCATIONS = ('s3://sap-s3-raw/');
 
 /*  Use the following commands to Validate the storage integration */
