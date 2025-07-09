@@ -16,10 +16,15 @@ Prepare data sources (CDS views, tables, BW extractors) for initial and delta co
 Use the AWS glue SAP odata extractor to: 
  * Connect to SAP ODP API v2 as a source and extract data from BW extractors, CDS views, or expose any arbitrary table.
  * Run the AWS Glue job to extract the data into an S3 bucket, split into folders. 
+ * Connect to SAP ODP API v2 as a source and extract data from BW extractors, CDS views, or expose any arbitrary table.
+ * Run the AWS Glue job to extract the data into an S3 bucket, split into folders. 
 **Create the RAW layer (Snowflake SQL)**
 
 Use the Snowflake SQL worksheet (file setup.sql) to:
 
+ * Activate a secure integration between AWS and Snowflake. 
+ * Generate table definitions automatically through metadata. 
+* Pipe data from the S3 bucket into Snowflake automatically.
  * Activate a secure integration between AWS and Snowflake. 
  * Generate table definitions automatically through metadata. 
 * Pipe data from the S3 bucket into Snowflake automatically.
@@ -29,9 +34,13 @@ Use a Snowflake notebook (SAP_PREP_GOLD.ipynb) to automatically:
  * Build business semantics.
  * Build a reporting mart.
  * Optimze query performance.
+ * Build business semantics.
+ * Build a reporting mart.
+ * Optimze query performance.
 
 **Automate data flow between layers (Snowflake SQL)**
 
+Take the code from above to automate transformation orchestration.
 Take the code from above to automate transformation orchestration.
 
 ## Prerequisites
@@ -50,6 +59,7 @@ You also need to obtain the SAP Test and Demo User, starter package (TD_7016852)
 
 ### An AWS Account
 If you did not use the Cloud formation template, you will need to do the following steps.
+If you did not use the Cloud formation template, you will need to do the following steps.
 1. Create the above S/4HANA system (S4H) into your AWS account.
 2. Create an S3 bucket, name it *sap-s3-raw*.
 3. Connect AWS Glue to S4H. If you need this done securely check out this [blog](https://aws.amazon.com/blogs/awsforsap/share-sap-odata-services-securely-through-aws-privatelink-and-the-amazon-appflow-sap-connector/), and adapt it to AWS glue, not AppFlow. In the step, **Allow principals to access VPC Endpoint Services**, add the principal *glue.amazonaws.com* and ***not*** *appflow.amazonaws.com*.
@@ -60,6 +70,9 @@ Go to [Snowflake.com](https://www.snowflake.com/en/), select *Start for Free* an
 
 ## Prepare (SAP S/4 HANA)
 In SAP GUI, use the following three methods to activate the extraction of data through the ODP ODATA api:
+* [BW extractor for Accounts Receivables](docs/BW_ODATA_0FI_AR_4.pdf) (0FI_AR_4)
+* [View on Table for Customers](docs/Table_ODATA_KNA1.pdf) (KNA1)
+* [CDS View for Material](docs/CDS_ODATA_I_MATERIAL.pdf) (I_Material)
 * [BW extractor for Accounts Receivables](docs/BW_ODATA_0FI_AR_4.pdf) (0FI_AR_4)
 * [View on Table for Customers](docs/Table_ODATA_KNA1.pdf) (KNA1)
 * [CDS View for Material](docs/CDS_ODATA_I_MATERIAL.pdf) (I_Material)
