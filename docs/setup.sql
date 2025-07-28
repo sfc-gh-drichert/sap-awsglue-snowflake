@@ -22,19 +22,81 @@ in the S3 bucket, so Snowflake can pick them up automatically.
 Read the following documentation to set this up correctly.
 https://docs.snowflake.com/en/user-guide/data-load-s3-config-storage-integration
 
+Here are the main steps:
+In AWS S3 console: Verify you created an S3 bucket with name "sap-s3-raw".
+In AWS IAM console, 
+  Create a trusted entity AWS account role. Name it "sap_snowflake_s3_access_role". 
+  Select Another AWS, and put in a temporary placeholder number, for example "123456789012". In a later step you will change this.
+  Select Require external ID, and put in a temporary id, for example, "0000". In a later step you will change this.
+
+  Then, in the permissions tab, Add permissions-->create in-line policy with the following access permissions on S3 bucket sap-s3-raw, that is paste the following JSON into the policy:
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:GetObjectVersion",
+                "s3:DeleteObject",
+                "s3:DeleteObjectVersion",
+                "s3:ListBucket",
+                "s3:GetBucketLocation"
+            ],
+            "Resource": "arn:aws:s3:::sap-s3-raw/*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket",
+                "s3:GetBucketLocation"
+            ],
+            "Resource": "arn:aws:s3:::sap-s3-raw",
+            "Condition": {
+                "StringLike": {
+                    "s3:prefix": [
+                        "*"
+                    ]
+                }
+            }
+        }
+    ]
+}
+
+  Name the policy sap_snowflake_access.
+  On the role summary page, locate and record the Role ARN value. In the next step, you will create a Snowflake integration that references this role.
  */
 
+/* In Snowflake, create a storage integration using the CREATE STORAGE INTEGRATION command. 
+A storage integration is a Snowflake object that stores a generated identity and access management (IAM) user for your S3 cloud storage.  */
 CREATE OR REPLACE STORAGE INTEGRATION SAP_INTEGRATION 
   TYPE = EXTERNAL_STAGE
   STORAGE_PROVIDER = 'S3'
   ENABLED = TRUE
-  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::YourNumber:role/YourRole' --follow the instructions above to get this
-  STORAGE_AWS_EXTERNAL_ID = 'YourExternalID' --so you don't have to set it each time your recreate the storage integration.
+  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::YourNumber:role/YourRole' --paste the role ARN value you got from the AWS role, above.
+  STORAGE_AWS_EXTERNAL_ID = 'YourExternalID' --put in a combination of words and numbers, so you don't have to set it each time your recreate the storage integration.
   STORAGE_ALLOWED_LOCATIONS = ('s3://sap-s3-raw/');
+
 
 /*  Use the following commands to Validate the storage integration */
 SHOW  STORAGE INTEGRATIONS;
 DESC INTEGRATION SAP_INTEGRATION;
+
+/* From the above, record the values for the following properties:
+STORAGE_AWS_IAM_USER_ARN
+STORAGE_AWS_EXTERNAL_ID
+
+Go back to the AWS console to the IAM role you created above, "sap_snowflake_s3_access_role", and modify the policy document where snowflake_user_arn is the STORAGE_AWS_IAM_USER_ARN value you recorded.
+
+and snowflake_external_id is the STORAGE_AWS_EXTERNAL_ID value you recorded.
+
+Select Update policy to save your changes.
+
+Use the following command in Snowflake to validate the configuration of your storage integration.
+
+ */
+
 SELECT SYSTEM$VALIDATE_STORAGE_INTEGRATION ('SAP_INTEGRATION', 's3://sap-s3-raw/', 'validate_all.txt', 'all');
 
 /* Create the database and schema that will be used to land the raw data from SAP */
