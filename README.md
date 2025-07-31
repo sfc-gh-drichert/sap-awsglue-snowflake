@@ -26,18 +26,13 @@ Use the Snowflake SQL worksheet (file setup.sql) to:
 
  * Activate a secure integration between AWS and Snowflake. 
  * Generate table definitions automatically through metadata. 
-* Pipe data from the S3 bucket into Snowflake automatically.
- * Activate a secure integration between AWS and Snowflake. 
- * Generate table definitions automatically through metadata. 
-* Pipe data from the S3 bucket into Snowflake automatically.
+ * Pipe data from the S3 bucket into Snowflake automatically.
+
 
 **Create Bronze & Gold layers (Snowflake Notebook)**
 
 Use a Snowflake notebook (SAP_PREP_GOLD.ipynb) to automatically:
 
- * Build business semantics.
- * Build a reporting mart.
- * Optimze query performance.
  * Build business semantics.
  * Build a reporting mart.
  * Optimze query performance.
@@ -77,9 +72,6 @@ Go to [Snowflake.com](https://www.snowflake.com/en/), select *Start for Free* an
 
 ## Prepare (SAP S/4 HANA)
 In SAP GUI, use the following three methods to activate the extraction of data through the ODP ODATA api:
-* [BW extractor for Accounts Receivables](docs/BW_ODATA_0FI_AR_4.pdf) (0FI_AR_4)
-* [View on Table for Customers](docs/Table_ODATA_KNA1.pdf) (KNA1)
-* [CDS View for Material](docs/CDS_ODATA_I_MATERIAL.pdf) (I_Material)
 * [BW extractor for Accounts Receivables](docs/BW_ODATA_0FI_AR_4.pdf) (0FI_AR_4)
 * [View on Table for Customers](docs/Table_ODATA_KNA1.pdf) (KNA1)
 * [CDS View for Material](docs/CDS_ODATA_I_MATERIAL.pdf) (I_Material)
