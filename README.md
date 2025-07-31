@@ -2,13 +2,13 @@
 # SAP to Snowflake with AWS Glue
 Use the following templates and code to build a demo environment where you can create dataflows from SAP S/4HANA fully activated appliance and copy data to your own Snowflake database, model the data to transform the data into a data mart, and use dynamic tables to refresh it. 
 
-On the *extraction* part I've given examples of how to access ECC extractors in S/4HANA (0FI_AR_4 is for accounts receivable), how to create custom views on tables (KNA1 is the famous Customer table), and how to access ABAP CDS views (here I chose I_MATERIAL). 
+On the **extraction** part I've given examples of how to access ECC extractors in S/4HANA (0FI_AR_4 is for accounts receivable), how to create custom views on tables (KNA1 is the famous Customer table), and how to access ABAP CDS views (here I chose I_MATERIAL). 
 
-On the *transformation* semantics, I use large language modules (LLMs) to scan the tables and build up the business language automatically. It even joins the tables! 
+On the **transformation** semantics, I use large language modules (LLMs) to scan the tables and build up the business language automatically. It even joins the tables! 
 
 After that, just another step to trigger the transforms--Snowflake dynamic tables are a declarative way to do this--write your SQL transform statement, what lag refresh you want, say 5 minutes, and Snowflake handles the change data capture for you! 
 
-After this, it's just a quick step to start using *Snowflake Cortex*, or AWS AI tools!  
+After this, it's just a quick step to start using **Snowflake Cortex**, or AWS AI tools!  
 
 Here is a quick overview of the main steps to set up the demo environment:
 
