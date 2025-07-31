@@ -19,6 +19,7 @@ Use the AWS glue SAP odata extractor to:
  * Run the AWS Glue job to extract the data into an S3 bucket, split into folders. 
  * Connect to SAP ODP API v2 as a source and extract data from BW extractors, CDS views, or expose any arbitrary table.
  * Run the AWS Glue job to extract the data into an S3 bucket, split into folders. 
+
 **Create the RAW layer (Snowflake SQL)**
 
 Use the Snowflake SQL worksheet (file setup.sql) to:
@@ -29,9 +30,11 @@ Use the Snowflake SQL worksheet (file setup.sql) to:
  * Activate a secure integration between AWS and Snowflake. 
  * Generate table definitions automatically through metadata. 
 * Pipe data from the S3 bucket into Snowflake automatically.
+
 **Create Bronze & Gold layers (Snowflake Notebook)**
 
 Use a Snowflake notebook (SAP_PREP_GOLD.ipynb) to automatically:
+
  * Build business semantics.
  * Build a reporting mart.
  * Optimze query performance.
@@ -45,6 +48,7 @@ Take the code from above to automate transformation orchestration.
 Take the code from above to automate transformation orchestration.
 
 ## Prerequisites
+
 * An SAP S/4HANA demo & test account
 * An AWS account
 * A Snowflake account
@@ -52,6 +56,7 @@ Take the code from above to automate transformation orchestration.
 ### SAP S/4HANA Test & Demo Account
 
 There are three options to activate an S/4 HANA demo system, either through:
+
 * using the following AWS Cloud formation [template](docs/s4_glue_iam_s3_2025_Jul_3.yaml) in region us-west-2 (Oregon) to deploy a stack that includes the S/4HANA instance, the AWS Glue jobs, the IAM roles, and the S3 bucket.
 * [SAP Cloud Application Library](cal.sap.com) (1-2 hours, use for 30 days), or use the
 * AWS Launch wizard ([Create deployment - SAP NetWeaver on SAP HANA system single instance deployment](https://github.com/awslabs/aws-sap-automation/tree/main/s4h_faa) 4-5 hours, use indefinitely). To order the appliance for download, check [SAP Note 2041140](https://me.sap.com/notes/2041140).
@@ -59,6 +64,7 @@ There are three options to activate an S/4 HANA demo system, either through:
 You also need to obtain the SAP Test and Demo User, starter package (TD_7016852) from the [SAP partner pricing app](https://partnersappartnerpricingapp.cfapps.eu10.hana.ondemand.com/index.html#/PlistDataCollection/US#PARPL#TD_7016852/false). If you do not install the licenses, either the CAL or on-premise system, your system will stop running after 30-90 days.
 
 ### An AWS Account
+
 If you did not use the Cloud formation template, you will need to do the following steps.
 If you did not use the Cloud formation template, you will need to do the following steps.
 1. Create the above S/4HANA system (S4H) into your AWS account.
